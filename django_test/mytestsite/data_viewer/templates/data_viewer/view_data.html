@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Data Viewer | Camiones</title>
+  <style>
+    :root {
+      --bg: #f4f7f8;
+      --panel: #ffffff;
+      --ink: #1f2a2e;
+      --muted: #5f737a;
+      --accent: #0f766e;
+      --accent-soft: #dff5f2;
+      --line: #d8e2e5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, #d9f1ed 0, transparent 35%),
+        radial-gradient(circle at 100% 0%, #e8f3ff 0, transparent 35%),
+        var(--bg);
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .title {
+      margin: 0;
+      font-size: 1.55rem;
+      letter-spacing: 0.2px;
+    }
+    .subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .link-btn {
+      text-decoration: none;
+      background: var(--accent);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: 600;
+      box-shadow: 0 8px 22px rgba(15, 118, 110, 0.25);
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .card h2 {
+      margin: 8px 0 0;
+      font-size: 1.35rem;
+    }
+    .dataset {
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .table-wrap {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      overflow: auto;
+      max-height: 72vh;
+    }
+    table {
+      border-collapse: collapse;
+      min-width: 900px;
+      width: 100%;
+      font-size: 0.93rem;
+    }
+    thead {
+      position: sticky;
+      top: 0;
+      background: #f8fbfc;
+      z-index: 2;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    tbody tr:hover {
+      background: var(--accent-soft);
+    }
+    .event {
+      border-radius: 999px;
+      font-size: 0.78rem;
+      padding: 4px 8px;
+      font-weight: 600;
+      display: inline-block;
+      text-transform: uppercase;
+    }
+    .event.moving { background: #e7effa; color: #1f4b7a; }
+    .event.loading { background: #e6f7eb; color: #1f6a3f; }
+    .event.unloading { background: #fdeceb; color: #8b2b25; }
+    .loading { padding: 20px; color: var(--muted); }
+    @media (max-width: 860px) {
+      .cards { grid-template-columns: 1fr; }
+      .topbar { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="topbar">
+      <div>
+        <h1 class="title">Data Viewer de Camiones</h1>
+        <p class="subtitle">Telemetria cruda (lat/lon, peso y eventos por parada)</p>
+      </div>
+      <a class="link-btn" href="/data_viewer/view_map/">Ver Mapa</a>
+    </section>
+
+    <section class="cards">
+      <article class="card">
+        <p>Puntos procesados</p>
+        <h2 id="total_points">-</h2>
+      </article>
+      <article class="card">
+        <p>Camiones activos</p>
+        <h2 id="active_trucks">-</h2>
+      </article>
+      <article class="card">
+        <p>Peso bruto medio (kg)</p>
+        <h2 id="avg_gross_weight">-</h2>
+      </article>
+    </section>
+
+    <div class="dataset" id="dataset_path">Cargando dataset...</div>
+
+    <section class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Truck</th>
+            <th>Timestamp UTC</th>
+            <th>Evento</th>
+            <th>Lat</th>
+            <th>Lon</th>
+            <th>Peso bruto (kg)</th>
+            <th>Carga (kg)</th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td colspan="7" class="loading">Cargando datos...</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    async function loadData() {
+      const resp = await fetch('/data_viewer/api/data/');
+      if (!resp.ok) {
+        throw new Error('No se pudo cargar la API de datos');
+      }
+      return resp.json();
+    }
+
+    function eventBadgeClass(eventType) {
+      if (eventType === 'loading') return 'event loading';
+      if (eventType === 'unloading') return 'event unloading';
+      return 'event moving';
+    }
+
+    function renderRows(rows) {
+      const tbody = document.getElementById('rows');
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">Sin datos en el dataset.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rows.map((r) => {
+        const payload = r.payload_kg == null ? '-' : Number(r.payload_kg).toFixed(0);
+        return `
+          <tr>
+            <td>${r.truck_id}</td>
+            <td>${r.event_ts_display}</td>
+            <td><span class="${eventBadgeClass(r.event_type)}">${r.event_type}</span></td>
+            <td>${Number(r.lat).toFixed(6)}</td>
+            <td>${Number(r.lon).toFixed(6)}</td>
+            <td>${Number(r.gross_weight_kg).toFixed(2)}</td>
+            <td>${payload}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    loadData()
+      .then((data) => {
+        document.getElementById('total_points').textContent = data.total_points;
+        document.getElementById('active_trucks').textContent = data.active_trucks;
+        document.getElementById('avg_gross_weight').textContent = data.avg_gross_weight;
+        document.getElementById('dataset_path').textContent = `Dataset: ${data.dataset_path}`;
+        renderRows(data.rows || []);
+      })
+      .catch((err) => {
+        document.getElementById('dataset_path').textContent = err.message;
+        document.getElementById('rows').innerHTML =
+          '<tr><td colspan="7" class="loading">Error cargando datos.</td></tr>';
+      });
+  </script>
+</body>
+</html>

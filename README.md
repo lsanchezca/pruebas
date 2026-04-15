@@ -149,6 +149,3 @@ Puntos de entrega únicos identificados por agrupación de coordenadas
 - **Frontend**: Leaflet.js 1.9.4, Vanilla JavaScript
 - **Database**: SQLite (auto-generada)
 
-## 📄 Licencia
-
-MIT
